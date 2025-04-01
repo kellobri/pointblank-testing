@@ -1,0 +1,97 @@
+---
+title: Pointblank Blog Test
+author: Kelly from Posit
+date: 'April 1, 2025'
+toc: true
+number-sections: true
+---
+
+[Blog Post](https://posit.co/blog/introducing-pointblank-for-python/)
+
+For pointblank:
+```
+pip install 'pointblank[duckdb]'
+pip install polars
+```
+
+For Quarto:
+```
+pip install pyyaml
+pip install nbformat
+pip install nbclient
+```
+
+
+## Pointblank: Data Validation in Python
+
+- the `Validate(data=...)` argument takes a DataFrame (or database table) that you want to validate
+- the methods starting with `col_*` specify validation steps that run on specific columns
+- the `interrogate()` method executes the validation plan on the table (it’s the finishing step)
+
+```{python}
+import pointblank as pb
+
+small_table = pb.load_dataset(dataset="small_table", tbl_type="polars")
+
+validation_1 = (
+    pb.Validate(
+        data=small_table,
+        tbl_name="small_table",
+        label="Example Validation"
+    )
+    .col_vals_lt(columns="a", value=10)
+    .col_vals_between(columns="d", left=0, right=5000)
+    .col_vals_in_set(columns="f", set=["low", "mid", "high"])
+    .col_vals_regex(columns="b", pattern=r"^[0-9]-[a-z]{3}-[0-9]{3}$")
+    .interrogate()
+)
+
+validation_1
+
+```
+
+## Threshold levels
+
+Failing test units can be tied to threshold levels, which can provide a better indication of whether failures should raise some basic awareness or spur you into action. 
+
+
+```{python}
+import pointblank as pb
+import polars as pl
+
+validation_2 = (
+    pb.Validate(
+        data=pb.load_dataset(dataset="game_revenue", tbl_type="polars"),
+        tbl_name="game_revenue",
+        label="Data validation with threshold levels set.",
+        thresholds=pb.Thresholds(warning=1, error=20, critical=0.10),
+    )
+    .col_vals_regex(columns="player_id", pattern=r"^[A-Z]{12}[0-9]{3}$")        # STEP 1
+    .col_vals_gt(columns="session_duration", value=5)                           # STEP 2
+    .col_vals_ge(columns="item_revenue", value=0.02)                            # STEP 3
+    .col_vals_in_set(columns="item_type", set=["iap", "ad"])                    # STEP 4
+    .col_vals_in_set(                                                           # STEP 5
+        columns="acquisition",
+        set=["google", "facebook", "organic", "crosspromo", "other_campaign"]
+    )
+    .col_vals_not_in_set(columns="country", set=["Mongolia", "Germany"])        # STEP 6
+    .col_vals_between(                                                          # STEP 7
+        columns="session_duration",
+        left=10, right=50,
+        pre = lambda df: df.select(pl.median("session_duration"))
+    )
+    .rows_distinct(columns_subset=["player_id", "session_id", "time"])          # STEP 8
+    .row_count_match(count=2000)                                                # STEP 9
+    .col_exists(columns="start_day")                                            # STEP 10
+    .interrogate()
+)
+
+validation_2
+```
+
+## Report for Individual Validation Steps
+
+
+```{python}
+validation_2.get_step_report(i=2)
+```
